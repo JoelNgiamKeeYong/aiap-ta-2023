@@ -1,0 +1,52 @@
+# config.yaml
+# This is a configuration file for the machine learning pipeline.
+
+# General configurations
+LOKY_MAX_CPU_COUNT: "4" # Maximum number of CPU cores to use for parallel processing. Adjust this value based on your system's available resources.
+
+# Database configurations
+data_url: "https://techassessment.blob.core.windows.net/aiap-preparatory-bootcamp/score.db" # URL to download the SQLite database file
+db_path: "data/score.db" # Path to the SQLite database file containing the dataset.
+db_table_name: "score" # Name of the table in the database that contains the data.
+target: "final_test" # Name of the target variable in the dataset. This is the variable we want to predict.
+
+# Data preprocessing configurations
+test_size: 0.2 # Proportion of the dataset to include in the test split (20%).
+random_state: 42 # Random seed for reproducibility across train-test splits.
+variance_threshold: 0.01 # asd
+
+# Model training configurations
+use_randomized_cv: False # To set True if running large array of parameters, then use False to use GridSearch CV to search
+cv_folds: 5 # Number of cross-validation folds for hyperparameter tuning. A smaller number speeds up training but may reduce robustness.
+n_jobs: -1 # Number of parallel jobs to run (-1 means use all available CPU cores). Set to a specific number if you want to limit resource usage.
+scoring_metric: "neg_mean_squared_error" # Metric to optimize during hyperparameter tuning. As underestimating or overestimating a student's score by a large margin has significant consequences
+
+# Model-specific hyperparameter configurations
+model_configuration:
+  Linear Regression:
+    params:
+      fit_intercept: [True, False] # Whether to calculate the intercept for this model.
+
+  Random Forest:
+    params:
+      n_estimators: [50, 100, 200] # Number of trees in the forest. More trees can improve performance but increase computation time.
+      max_depth: [null, 10, 20] # Maximum depth of each tree. "null" means no limit, allowing trees to grow fully.
+      min_samples_split: [2, 5, 10] # Minimum number of samples required to split an internal node.
+
+  XGBoost:
+    params:
+      learning_rate: [0.01, 0.1, 0.2] # Step size shrinkage used in updates to prevent overfitting.
+      n_estimators: [50, 100, 200] # Number of boosting rounds (trees). More rounds can improve performance but increase risk of overfitting.
+      max_depth: [3, 5, 7] # Maximum depth of each tree. Deeper trees increase model complexity.
+      subsample: [0.8, 1.0] # Fraction of samples to use for each tree. Lower values reduce overfitting.
+
+  LightGBM:
+    params:
+      learning_rate: [0.05] # Controls the contribution of each tree. Smaller values require more boosting rounds.
+      n_estimators: [50] # Number of boosting rounds (trees). Start with a small number to avoid overfitting.
+      max_depth: [5] # Maximum depth of each tree. Limits tree complexity to prevent overfitting.
+      num_leaves: [31] # Number of leaves in each tree. Higher values increase model capacity but risk overfitting.
+      subsample: [0.8] # Fraction of samples to use for each tree. Helps reduce overfitting.
+      colsample_bytree: [0.8] # Fraction of features to use for each tree. Helps reduce overfitting.
+      reg_lambda: [0.1] # L2 regularization term. Penalizes large weights to prevent overfitting.
+
