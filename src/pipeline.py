@@ -98,7 +98,7 @@ def main():
                 "params": RF_PARAMS
             },
             "XGBoost": {
-                "model": XGBRegressor(objective='reg:squarederror', random_state=RANDOM_STATE),
+                "model": XGBRegressor(random_state=RANDOM_STATE),
                 "params": XG_PARAMS
             },
             "LightGBM": {  
@@ -118,7 +118,8 @@ def main():
     trained_models = evaluate_models(
         trained_models=trained_models,
         feature_names=feature_names,
-        X_train=X_train, X_test=X_test, y_train=y_train, y_test=y_test
+        X_train=X_train, X_test=X_test, y_train=y_train, y_test=y_test,
+         n_jobs=N_JOBS, cv_folds=CV_FOLDS, scoring_metric=SCORING_METRIC
     )
 
     # Print a summary table of training times and model sizes

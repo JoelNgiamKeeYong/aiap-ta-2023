@@ -158,6 +158,16 @@ The machine learning pipeline is designed to be **modular**, **interpretable**, 
 
 **4. 🤖 Model Training:**
 
+While choosing the metrics, consider a few of the following questions:
+
+Do you expect frequent outliers in the dataset? If so, how do you want to account for them?
+Is there a business preference for overforecasting or underforecasting?
+Do you want a scale-dependent or scale-independent metric?
+
+https://developer.nvidia.com/blog/a-comprehensive-overview-of-regression-evaluation-metrics/
+
+Choose which evaluation metrics to use and why, and choose which one not to use
+
 - Train multiple models (e.g., Logistic Regression, Random Forest, XGBoost).
 - Use GridSearchCV for hyperparameter tuning, with an option to switch to RandomizedSearchCV via the config.yaml file.
 

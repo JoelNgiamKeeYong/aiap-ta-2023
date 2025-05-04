@@ -19,35 +19,42 @@ from sklearn.metrics import (
 from sklearn.model_selection import learning_curve
 
 
-def evaluate_models(trained_models, feature_names, X_train, X_test, y_train, y_test):
+def evaluate_models(trained_models, feature_names, X_train, X_test, y_train, y_test, n_jobs, cv_folds, scoring_metric):
     """
-    Evaluate a list of trained models and save evaluation results.
+    Evaluate a list of trained models, compute performance metrics, generate visualizations, and save results.
+
+    This function evaluates each model in the provided list by computing performance metrics (e.g., RMSE, MAE),
+    extracting feature importances, generating diagnostic plots (e.g., residual plots, learning curves), and saving
+    all results to a consolidated output directory. It also measures and records the evaluation time for each model.
 
     Args:
-        trained_models (list): List of trained models to evaluate.
-        X_train (pd.DataFrame or np.ndarray): Training feature matrix.
-        X_test (pd.DataFrame or np.ndarray): Testing feature matrix.
-        y_train (pd.Series or np.ndarray): Training target variable.
-        y_test (pd.Series or np.ndarray): Testing target variable.
+        trained_models (list): A list of tuples containing the trained models to evaluate.
+        feature_names (list): List of feature names corresponding to the columns in `X_train` and `X_test`.
+        X_train (pd.DataFrame or np.ndarray): Training feature matrix used to fit the models.
+        X_test (pd.DataFrame or np.ndarray): Testing feature matrix used for evaluation.
+        y_train (pd.Series or np.ndarray): True target values for the training set.
+        y_test (pd.Series or np.ndarray): True target values for the testing set.
+        n_jobs (int): Number of parallel jobs to use during learning curve generation.
+        cv_folds (int): Number of cross-validation folds to use for learning curve evaluation.
+        scoring_metric (str): Scoring metric to use for evaluating learning curves (e.g., 'neg_mean_squared_error').
 
     Returns:
-        dict: Dictionary containing consolidated evaluation results.
+        list: Updated list of tuples containing the evaluated models. Each tuple includes:
+              - model_name (str): Name of the model.
+              - best_model: The trained model object.
+              - training_time (float): Time taken to train the model (in seconds).
+              - model_size_kb (float): Size of the trained model in kilobytes.
+              - evaluation_time (float): Time taken to evaluate the model (in seconds).
+
+    Output:
+        - Metrics and visualizations are saved to the `output` directory.
+        - Consolidated evaluation metrics are saved as a summary file.
     """
     print(f"\n📊 Evaluating best models...")
 
-    # Ensure the output directory exists
+    # Create output directory
     output_dir = 'output'
     os.makedirs(output_dir, exist_ok=True)
-
-    # Create subdirectories for each type of output
-    feature_importance_dir = os.path.join(output_dir, "feature_importance")
-    residual_plots_dir = os.path.join(output_dir, "residual_plots")
-    prediction_vs_actual_dir = os.path.join(output_dir, "prediction_vs_actual")
-    learning_curves_dir = os.path.join(output_dir, "learning_curves")
-    os.makedirs(feature_importance_dir, exist_ok=True)
-    os.makedirs(residual_plots_dir, exist_ok=True)
-    os.makedirs(prediction_vs_actual_dir, exist_ok=True)
-    os.makedirs(learning_curves_dir, exist_ok=True)
 
     # Lists to store results
     results = []  # Evaluation metrics for each model
@@ -57,15 +64,19 @@ def evaluate_models(trained_models, feature_names, X_train, X_test, y_train, y_t
         print(f"\n   📋 Evaluating {model_name} model...")
         start_time = time.time()
 
+        # Predict values
+        y_train_pred = best_model.predict(X_train)
+        y_test_pred = best_model.predict(X_test)
+
         # Evaluate the model on training and test sets
-        formatted_metrics = calculate_evaluation_metrics(model_name, best_model, X_train, X_test, y_train, y_test)
+        formatted_metrics = calculate_evaluation_metrics(model_name, y_train, y_train_pred, y_test, y_test_pred)
         results.append(formatted_metrics)
 
         # Generate and store evaluation scores and metrics
-        extract_feature_importances(best_model, model_name, feature_names, feature_importance_dir)
-        generate_residual_plot(best_model, X_test, y_test, model_name, residual_plots_dir)
-        generate_prediction_vs_actual_plot(best_model, X_test, y_test, model_name, prediction_vs_actual_dir)
-        generate_learning_curves(best_model, model_name, X_train, y_train, learning_curves_dir)
+        extract_feature_importances(best_model, model_name, feature_names, output_dir)
+        generate_residual_plot(model_name, y_test, y_test_pred, output_dir)
+        generate_prediction_vs_actual_plot(model_name, y_test, y_test_pred, output_dir)
+        generate_learning_curves(best_model, model_name, X_train, y_train, n_jobs, cv_folds, scoring_metric, output_dir)
 
         # Record and store evaluation time
         end_time = time.time()
@@ -80,20 +91,21 @@ def evaluate_models(trained_models, feature_names, X_train, X_test, y_train, y_t
     return trained_models
 
 
-def calculate_evaluation_metrics(model_name, model, X_train, X_test, y_train, y_test):
+def calculate_evaluation_metrics(model_name, y_train, y_train_pred, y_test, y_test_pred):
     """
-    Calculate evaluation metrics for a regression model.
+    Calculate and format evaluation metrics for a regression model.
 
     Args:
-        model: Trained regression model.
-        X: Feature matrix.
-        y_true: True target values.
+        model_name (str): Name of the model.
+        y_train: True target values for the training set.
+        y_train_pred: Predicted target values for the training set.
+        y_test: True target values for the test set.
+        y_test_pred: Predicted target values for the test set.
 
     Returns:
-        dict: Dictionary of evaluation metrics.
+        dict: Dictionary of formatted evaluation metrics.
     """
     # Calculate training metrics
-    y_train_pred = model.predict(X_train)
     train_RMSE = np.sqrt(mean_squared_error(y_train, y_train_pred))
     train_MAE = mean_absolute_error(y_train, y_train_pred)
     train_R_Squared = r2_score(y_train, y_train_pred)
@@ -103,7 +115,6 @@ def calculate_evaluation_metrics(model_name, model, X_train, X_test, y_train, y_
     train_Max_Error = max_error(y_train, y_train_pred)
 
     # Calculate test metrics
-    y_test_pred = model.predict(X_test)
     test_RMSE = np.sqrt(mean_squared_error(y_test, y_test_pred))
     test_MAE = mean_absolute_error(y_test, y_test_pred)
     test_R_Squared = r2_score(y_test, y_test_pred)
@@ -119,9 +130,7 @@ def calculate_evaluation_metrics(model_name, model, X_train, X_test, y_train, y_
         "MAE": f"{test_MAE:.2f} ({train_MAE:.2f})",
         "MedAE": f"{test_MedAE:.2f} ({train_MedAE:.2f})",
         "MSLE": f"{test_MSLE:.2f} ({train_MSLE:.2f})",
-        "R²": f"{test_R_Squared:.2f} ({train_R_Squared:.2f})"
-        if train_MSLE is not None and test_MSLE is not None
-        else "N/A (Negative Values)",
+        "R²": f"{test_R_Squared:.2f} ({train_R_Squared:.2f})",
         "Explained Variance": f"{test_Explained_Variance:.2f} ({train_Explained_Variance:.2f})",
         "Max Error": f"{test_Max_Error:.2f} ({train_Max_Error:.2f})",
     }
@@ -129,18 +138,22 @@ def calculate_evaluation_metrics(model_name, model, X_train, X_test, y_train, y_
     return formatted_metrics
 
 
-def extract_feature_importances(model, model_name, feature_names, feature_importance_dir):
+def extract_feature_importances(model, model_name, feature_names, output_dir):
     """
-    Extract and store feature importance scores.
+    Extract and save feature importance scores for a trained model.
 
     Args:
-        model: Trained regression model.
+        model: Trained machine learning model.
         model_name (str): Name of the model.
-        feature_names (list): List of feature names.
-        feature_importance_results (list): List to store feature importance results.
-        feature_importance_dir (str): Directory to save feature importance files.
+        feature_names (list): List of feature names corresponding to the model's features.
+        output_dir (str): Directory to save the feature importance file.
+
+    Notes:
+        - Supports models with `feature_importances_` (e.g., tree-based models) or `coef_` (e.g., linear models).
+        - Saves feature importance scores to a text file in the specified directory.
     """
     try:
+        # Check if the model supports feature importances or coefficients
         if hasattr(model, "feature_importances_"):
             feature_importances = pd.Series(
                 model.feature_importances_, index=feature_names
@@ -152,7 +165,9 @@ def extract_feature_importances(model, model_name, feature_names, feature_import
         else:
             raise AttributeError("Model does not have feature_importances_ or coef_.")
 
-        file_path = os.path.join(feature_importance_dir, f"feature_importances_{model_name.replace(' ', '_').lower()}.txt")
+        # Save feature importance scores to a file
+        os.makedirs(f"{output_dir}/feature_importance", exist_ok=True)
+        file_path = f"{output_dir}/feature_importance/feature_importances_{model_name.replace(' ', '_').lower()}.txt"
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(f"- 📊 Feature Importance Scores for {model_name}:-\n")
             f.write(feature_importances.to_string())
@@ -162,28 +177,33 @@ def extract_feature_importances(model, model_name, feature_names, feature_import
         print(f"      └── ⚠️  Could not compute or save feature importance for {model_name}: {str(e)}")
 
 
-def generate_residual_plot(model, X_test, y_test, model_name, residual_plots_dir):
+def generate_residual_plot(model_name, y_test, y_test_pred, output_dir):
     """
-    Generate and save residual plots.
+    Generate and save residual plots for a regression model.
+
+    This function creates two subplots:
+    1. A scatter plot of residuals vs predicted values to identify patterns.
+    2. A histogram with a KDE of residuals to assess their distribution.
 
     Args:
-        model: Trained regression model.
-        X_test: Test feature matrix.
-        y_test: True target values for the test set.
         model_name (str): Name of the model.
-        residual_plots_data (list): List to store residual plot data.
-        residual_plots_dir (str): Directory to save residual plots.
+        y_test (pd.Series or np.ndarray): True target values for the test set.
+        y_test_pred (pd.Series or np.ndarray): Predicted target values for the test set.
+        output_dir (str): Directory to save residual plots.
+
+    Notes:
+        - Residuals are calculated as `y_test - y_pred`.
+        - The output file is saved in PNG format with a resolution of 300 DPI.
     """
     try:
-        # Calculate predictions and residuals
-        y_pred = model.predict(X_test)
-        residuals = y_test - y_pred
+        # Calculate residuals
+        residuals = y_test - y_test_pred
 
         # Create a figure with two subplots
         fig, axes = plt.subplots(1, 2, figsize=(16, 6))  # 1 row, 2 columns
 
         # Subplot 1: Residual Plot (Scatter plot of residuals vs predicted values)
-        axes[0].scatter(y_pred, residuals, alpha=0.5, color="blue")
+        axes[0].scatter(y_test_pred, residuals, alpha=0.5, color="blue")
         axes[0].axhline(y=0, color="red", linestyle="--")
         axes[0].set_title(f"Residual Plot for {model_name}", fontsize=14)
         axes[0].set_xlabel("Predicted Values", fontsize=12)
@@ -201,7 +221,8 @@ def generate_residual_plot(model, X_test, y_test, model_name, residual_plots_dir
 
         # Adjust layout and save the combined plot
         plt.tight_layout()
-        file_path = os.path.join(residual_plots_dir, f"residual_plot_{model_name.replace(' ', '_').lower()}.png")
+        os.makedirs(f"{output_dir}/residual_plots", exist_ok=True)
+        file_path = f"{output_dir}/residual_plots/residual_plot_{model_name.replace(' ', '_').lower()}.png"
         plt.savefig(file_path, dpi=300, bbox_inches="tight")
         plt.close()
 
@@ -211,53 +232,67 @@ def generate_residual_plot(model, X_test, y_test, model_name, residual_plots_dir
         print(f"      └── ⚠️  Error generating residual plot for {model_name}: {str(e)}")
 
 
-def generate_prediction_vs_actual_plot(model, X_test, y_test, model_name, prediction_vs_actual_dir):
+def generate_prediction_vs_actual_plot(model_name, y_test, y_test_pred, output_dir):
     """
-    Generate and save prediction vs actual plot.
+    Generate and save a prediction vs actual plot for a regression model.
+
+    This function creates a scatter plot comparing predicted values against actual values,
+    along with a diagonal line representing perfect predictions.
 
     Args:
-        model: Trained regression model.
-        X_test: Test feature matrix.
-        y_test: True target values for the test set.
         model_name (str): Name of the model.
-        prediction_vs_actual_dir (str): Directory to save prediction vs actual plots.
+        y_test (pd.Series or np.ndarray): True target values for the test set.
+        y_test_pred (pd.Series or np.ndarray): Predicted target values for the test set.
+        output_dir (str): Directory to save the prediction vs actual plot.
     """
     try:
-        y_pred = model.predict(X_test)
-
+        # Create the plot
         plt.figure(figsize=(10, 6))
-        plt.scatter(y_test, y_pred, alpha=0.5)
-        plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], color="red", linestyle="--")
+        plt.scatter(y_test, y_test_pred, alpha=0.5, label="Predictions")
+        plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], color="red", linestyle="--", label="Perfect Fit")
         plt.title(f"Prediction vs Actual for {model_name}")
         plt.xlabel("Actual Values")
         plt.ylabel("Predicted Values")
         plt.grid(True)
 
-        file_path = os.path.join(prediction_vs_actual_dir, f"prediction_vs_actual_{model_name.replace(' ', '_').lower()}.png")
+        # Save the plot
+        os.makedirs(f"{output_dir}/prediction_vs_actual", exist_ok=True)
+        file_path = f"{output_dir}/prediction_vs_actual/prediction_vs_actual_{model_name.replace(' ', '_').lower()}.png"
         plt.savefig(file_path, dpi=300, bbox_inches="tight")
         plt.close()
 
         print(f"      └── Generated and saved prediction vs actual plot for {model_name}.")
+
     except Exception as e:
-        print(f"      └── ⚠️ Error generating prediction vs actual plot for {model_name}: {str(e)}")
+        print(f"      └── ⚠️  Error generating prediction vs actual plot for {model_name}: {str(e)}")
 
 
-def generate_learning_curves(model, model_name, X_train, y_train, learning_curves_dir):
+def generate_learning_curves(model, model_name, X_train, y_train, n_jobs, cv_folds, scoring_metric, output_dir):
     """
-    Generate and save learning curves.
+    Generate and save learning curves for a regression model.
+
+    This function creates a plot showing how the model's training and validation performance 
+    changes with the size of the training set.
 
     Args:
         model: Trained regression model.
         model_name (str): Name of the model.
         X_train: Training feature matrix.
         y_train: Training target variable.
-        learning_curves_dir (str): Directory to save learning curves.
+        n_jobs (int): Number of parallel jobs for learning curve computation.
+        cv_folds (int): Number of cross-validation folds.
+        scoring_metric (str): Scoring metric for learning curve evaluation (e.g., 'neg_mean_squared_error').
+        output_dir (str): Directory to save learning curves.
     """
     try:
+        # Calculate learning curves
         train_sizes, train_scores, test_scores = learning_curve(
-            model, X_train, y_train, cv=5, scoring="neg_mean_squared_error", n_jobs=-1
+            model,
+            X_train, y_train,
+            n_jobs=n_jobs, cv=cv_folds, scoring=scoring_metric,
         )
 
+        # Convert scores to RMSE if using 'neg_mean_squared_error'
         train_rmse = np.sqrt(-train_scores.mean(axis=1))
         test_rmse = np.sqrt(-test_scores.mean(axis=1))
 
@@ -275,13 +310,16 @@ def generate_learning_curves(model, model_name, X_train, y_train, learning_curve
         plt.legend(loc="best")
         plt.grid(True)
 
-        file_path = os.path.join(learning_curves_dir, f"learning_curves_{model_name.replace(' ', '_').lower()}.png")
+        # Save the plot
+        os.makedirs(f"{output_dir}/learning_curves", exist_ok=True)
+        file_path = f"{output_dir}/learning_curves/learning_curve_{model_name.replace(' ', '_').lower()}.png"
         plt.savefig(file_path, dpi=300, bbox_inches="tight")
         plt.close()
 
         print(f"      └── Generated and saved learning curves for {model_name}.")
+
     except Exception as e:
-        print(f"      └── ⚠️ Error generating learning curves for {model_name}: {str(e)}")
+        print(f"      └── ⚠️  Error generating learning curves for {model_name}: {str(e)}")
  
 
 def save_consolidated_metrics(results, output_dir):
